@@ -1,0 +1,86 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage[english]{babel}
+\usepackage{amsmath, amsfonts, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{hyperref}
+
+\geometry{margin=2.5cm}
+
+\title{\textbf{Adaptive Sequenogram Extraction: Blind Deconvolution of Spectrograms via Physics-Informed Template-Based ConvNMF}}
+\author{Your Name\thanks{Corresponding author: email@example.com} \\ 
+        \small \textit{Department of Computational Signal Processing}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+In complex acoustic environments, multipath propagation and reverberation significantly distort signal spectrograms, obscuring the temporal dynamics of sound emissions. We present a novel computational framework for extracting \textit{sequenograms}—high-resolution, sparse temporal activation vectors—from reverberant spectrograms using a dictionary of predefined templates. Our method employs a physics-informed Convolutional Non-Negative Matrix Factorization (ConvNMF) approach. Instead of using generic 2D kernels, we model the environmental echo using a frequency-dependent, causal 1D convolutional filter. This natively accounts for the physical phenomenon of frequency-dependent sound absorption and prevents the structural distortion of reference templates during optimization. Validated on synthetic datasets, the algorithm demonstrates robust performance in blind echo profile estimation and template localization. The proposed method provides a computationally efficient and adaptable tool for pattern discovery in large-scale acoustic monitoring.
+\end{abstract}
+
+\section{Introduction}
+The precise localization and classification of signal patterns in time-frequency representations are fundamental challenges in various domains, including bioacoustics, industrial monitoring, and underwater signaling. In natural environments, such as caves, forests, or enclosed urban spaces, primary signals are inevitably followed by a series of reflections. These reflections form an ``echo tail'' that smears the acoustic energy across the time axis, effectively blurring the spectrogram. 
+
+Traditional methods for signal detection, such as cross-correlation or standard image-based Convolutional Neural Networks (CNNs), are highly sensitive to such distortions. When the echo of one signal overlaps with the emission of a subsequent signal, standard detection algorithms often suffer from high false-positive rates and degraded timing accuracy.
+
+To address this, we introduce the concept of a \textbf{sequenogram}: a 1D sparse activation vector that represents the exact emission times of specific templates, stripped of environmental artifacts. Our approach utilizes a physics-informed blind deconvolution technique to extract these sequenograms while simultaneously learning the adaptive echo profile of the recording environment.
+
+\section{Materials and Methods}
+
+\subsection{Physical and Generative Model}
+Let $S \in \mathbb{R}_{\ge 0}^{F \times T}$ be the observed amplitude or power spectrogram, where $F$ is the number of frequency bins and $T$ is the number of time frames. We assume the generative process of the signal consists of two stages: emission and reverberation.
+
+First, a ``clean'' (anechoic) spectrogram $V$ is generated. Given a set of $K$ known templates $W_k$, each corresponding to a specific signal class, the clean spectrogram is formed by convolving these templates with their respective non-negative activation vectors (sequenograms) $H_k \in \mathbb{R}_{\ge 0}^{T}$:
+\begin{equation}
+V(f, t) = \sum_{k=1}^{K} (H_k *_{t} W_k(f, \cdot))(t)
+\end{equation}
+where $*_{t}$ denotes convolution along the time axis.
+
+Second, the clean spectrogram $V$ is subjected to environmental reverberation. Instead of using a generic 2D convolution that might erroneously shift energy across frequency bands, we apply a frequency-dependent 1D echo matrix $E \in \mathbb{R}_{\ge 0}^{F \times L_e}$. Each row of $E$ acts as an independent, causal impulse response for a specific frequency channel:
+\begin{equation}
+\hat{S}(f, t) = (V(f, \cdot) *_{t} E(f, \cdot))(t)
+\end{equation}
+This design natively reflects the physics of sound propagation: high-frequency sound waves attenuate more rapidly in the air than low-frequency waves.
+
+\subsection{Objective Function and Optimization}
+Since the observed spectrogram $S$ and the templates $W_k$ are known, the problem reduces to finding the hidden variables $H$ and $E$. We minimize the Kullback-Leibler (KL) divergence, which is robust to the high dynamic range typical of acoustic spectra:
+\begin{equation}
+\mathcal{L}(H, E) = \sum_{f, t} \left( S_{f,t} \log \frac{S_{f,t}}{\hat{S}_{f,t}} - S_{f,t} + \hat{S}_{f,t} \right) + \lambda \sum_{k=1}^{K} ||H_k||_1
+\end{equation}
+The $L_1$ regularization term, scaled by $\lambda$, enforces sparsity on the sequenograms, reflecting the physical reality that sound emissions are discrete, localized events rather than continuous noise.
+
+Optimization is performed using the Adam optimizer with Projected Gradient Descent to maintain non-negativity ($H \leftarrow \max(H, \epsilon)$, $E \leftarrow \max(E, \epsilon)$). To achieve computational efficiency on large arrays ($T \sim 10^5$), convolutions are computed in the frequency domain via the Fast Fourier Transform (FFT). Furthermore, we avoid zero-padding by dynamically slicing the frequency bounds of the templates during integration.
+
+\section{Results}
+
+\subsection{Synthetic Validation (Proof of Concept)}
+To verify the algorithm's capability to decouple overlapping signals and adaptive echoes, we constructed a synthetic dataset with known ground truth. The dataset included two templates occupying different frequency bands (low and high). Sparse activation spikes were generated for both templates, and a frequency-dependent exponential decay was applied as the echo. Finally, Gaussian noise was added to simulate real-world recording conditions.
+
+The blind deconvolution model successfully reconstructed the sparse sequenograms with exact temporal precision, distinguishing overlapping calls. Furthermore, the learned matrix $E$ accurately matched the ground-truth decay rates, automatically discovering that higher frequencies decayed faster than lower ones. 
+
+% [TODO: Insert Figure 1: Synthetic Spectrogram, Extracted Sequenograms, and Echo Profiles]
+
+\subsection{Application to Real-World Acoustic Data}
+% [TODO: Describe the results obtained from the 600,000x300 bat echolocation spectrogram. Mention how the templates were selected and how the extracted sequenograms improved signal timing accuracy compared to raw data.]
+
+\section{Discussion}
+The primary advantage of the proposed frequency-dependent 1D convolution over standard 2D deconvolution is its physical consistency. By prohibiting cross-frequency energy transfer within the echo model, we force the algorithm to explain temporal blurring strictly through reverberation. This prevents the model from maliciously altering the shape of the reference templates to minimize the loss function. Consequently, the extracted sequenograms represent true emission events rather than mathematical artifacts.
+
+\section{Conclusion}
+The Adaptive Sequenogram Extraction framework offers a robust, physics-informed approach to pattern discovery in highly reverberant environments. By separating the intrinsic signal template from the external environmental echo, the method provides high-fidelity temporal activations. Its reliance on FFT-based convolutions and dynamic frequency slicing makes it computationally viable for the large-scale analysis of continuous acoustic recordings.
+
+\section*{Data and Code Availability}
+The Python source code (utilizing PyTorch) and scripts for synthetic data generation are available in our public repository: \url{https://github.com/yourusername/AdaptiveSequenograms}.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
