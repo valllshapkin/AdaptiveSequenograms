@@ -14,7 +14,7 @@ matplotlib = "*"
 tectonic = ">=0.15.0,<0.16"
 
 [tasks]
-demo = "python Scripts/run_synthetic.py"
+test-synthetic = "python Scripts/run_synthetic.py"
 build-paper = "tectonic Article/main.tex"
 
 
