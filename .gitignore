@@ -1,0 +1,131 @@
+# Bytecode и кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Виртуальные окружения (на случай, если создадите вручную)
+env/
+venv/
+ENV/
+Environment/
+env.bak/
+venv.bak/
+.venv
+
+# Poetry (пикси седой)
+# (Обычно poetry хранит виртуальное окружение вне проекта,
+# но кэш и файлы блокировки могут быть чувствительными)
+poetry.lock
+# Если хотите коммитить poetry.lock (рекомендуется для приложений) — закомментируйте строку выше
+.poetry/
+poetry.toml
+
+# Файлы распространяемых пакетов
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+MANIFEST
+
+# Утилиты тестирования и покрытия
+.pytest_cache/
+.coverage
+.coverage.*
+.coverage.*.py
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.mypy_cache/
+
+# Линтеры, форматтеры, статический анализ
+.ruff_cache/
+.flake8
+.pytype/
+.pyre/
+
+# Файлы IDE и редакторов
+# VS Code
+.vscode/
+*.code-workspace
+# PyCharm
+.idea/
+*.iml
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+# Vim
+*.swp
+*.swo
+*~
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Логи и базы данных
+*.log
+*.sqlite
+*.db
+*.db-journal
+
+# Файлы окружения и секреты
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+credentials/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Файлы проектов (общие)
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.temp
+
+# Документация (если генерируется из кода)
+docs/_build/
+site/
+
+# Профилирование и дампы памяти
+*.prof
+*.dump
+*.heap
+
+# Файлы зависимостей (если генерируются, но не нужны в репозитории)
+requirements.txt
+requirements-dev.txt
+# (Обычно в проекте с poetry они не нужны — всё управляется через pyproject.toml)
+
+# pyproject.toml НЕ игнорируем — он основной для poetry
+# poetry.lock — решать вам: для библиотек часто игнорируют, для приложений — коммитят
+# pixi environments
+.pixi/*
+!.pixi/config.toml
