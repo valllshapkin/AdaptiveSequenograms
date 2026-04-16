@@ -50,14 +50,59 @@ Second, the clean spectrogram $V$ is subjected to environmental reverberation. I
 \end{equation}
 This design natively reflects the physics of sound propagation: high-frequency sound waves attenuate more rapidly in the air than low-frequency waves.
 
-\subsection{Objective Function and Optimization}
-Since the observed spectrogram $S$ and the templates $W_k$ are known, the problem reduces to finding the hidden variables $H$ and $E$. We minimize the Kullback-Leibler (KL) divergence, which is robust to the high dynamic range typical of acoustic spectra:
-\begin{equation}
-\mathcal{L}(H, E) = \sum_{f, t} \left( S_{f,t} \log \frac{S_{f,t}}{\hat{S}_{f,t}} - S_{f,t} + \hat{S}_{f,t} \right) + \lambda \sum_{k=1}^{K} ||H_k||_1
-\end{equation}
-The $L_1$ regularization term, scaled by $\lambda$, enforces sparsity on the sequenograms, reflecting the physical reality that sound emissions are discrete, localized events rather than continuous noise.
+\subsection{Physics-Informed Gauge Calibration of Loss Functionals}
+To extract perfect sequenograms, we must impose structural constraints on the activation vectors $f(t) \in [0,1]$ (where $f(t)$ represents an arbitrary channel of $H$). Specifically, we require $f(t)$ to consist of isolated, binarized peaks (Dirac-like events) with an expected physical density $\rho_0$ (peaks per second). 
 
-Optimization is performed using the Adam optimizer with Projected Gradient Descent to maintain non-negativity ($H \leftarrow \max(H, \epsilon)$, $E \leftarrow \max(E, \epsilon)$). To achieve computational efficiency on large arrays ($T \sim 10^5$), convolutions are computed in the frequency domain via the Fast Fourier Transform (FFT). Furthermore, we avoid zero-padding by dynamically slicing the frequency bounds of the templates during integration.
+In standard multi-task learning, structural losses are combined using a linear combination $\mathcal{L}_{total} = \sum \alpha_i \mathcal{L}_i$, where $\alpha_i$ are manually tuned hyperparameters. This linear approach creates a fundamental geometric flaw: the gradients act as a flat plane, perpetually applying a restorative force even when a specific loss component reaches zero, potentially pushing the network into negative, unstable regimes.
+
+Instead, we propose aggregating the loss components using a \textbf{Euclidean metric} $\mathcal{L}_{total} = \sqrt{\sum \mathcal{L}_i^2}$. The Euclidean geometry creates a conical potential well at the zero configuration. As a component $\mathcal{L}_i$ approaches zero, its partial derivative contribution naturally vanishes, dynamically shifting the optimization focus to the remaining unresolved constraints.
+
+However, the Euclidean approach is only valid if all functional components $\mathcal{L}_i[f]$ reside in an isotropic space. We achieve this by formulating a \textit{Gauge Calibration} framework. Any valid functional must satisfy three strict physical conditions:
+\begin{enumerate}
+    \item \textbf{Zero Ground State:} $\mathcal{L}[f^*] = 0$ for the expected ideal configuration $f^*$.
+    \item \textbf{Unit Variational Restoring Force:} The average magnitude of the variational derivative in the expected configuration must equal unity: $\langle | \frac{\delta \mathcal{L}}{\delta f(t)} | \rangle_{f^*} = 1$.
+    \item \textbf{Discretization Invariance:} The functional must converge to a stable continuous integral as the sampling rate increases ($\Delta t \to 0$).
+\end{enumerate}
+
+Based on these principles, we derive two main penalty functionals for the sequenograms. Let the total physical time be $\tau_{max}$, and the expected event duration be $\tau_e$ (typically the limit of one discrete bin, $\tau_e = \Delta t$).
+
+\subsubsection*{1. Sharpness Functional (Binarization)}
+We penalize deviations from $0$ and $1$. The continuous functional is defined as:
+\begin{equation}
+\mathcal{L}_{sharp}[f] = \int_{0}^{\tau_{max}} f(t)\big(1 - f(t)\big) dt
+\end{equation}
+\textit{Proof of constraints:}
+1) For $f(t) \in \{0, 1\}$, the integrand is strictly zero, satisfying the ground state condition. 
+2) The variational derivative is $\frac{\delta \mathcal{L}_{sharp}}{\delta f(t)} = 1 - 2f(t)$. Since $f(t) \in \{0,1\}$, the norm $|1-2f(t)| = 1$ everywhere. Thus, its average is $1$.
+3) Its discrete approximation $\mathcal{L}_{sharp} \approx \Delta t \sum_i f_i(1-f_i)$ explicitly incorporates $\Delta t$, ensuring invariance under varying sampling rates.
+
+\subsubsection*{2. Isolation Functional (Window Penalty)}
+To prevent peak blurring and excessively frequent emissions, we apply a local repulsion window. Let $w(t)$ be an indicator function equal to $1$ for $t \in [-\tau_w, \tau_w]$ and $0$ elsewhere, with a hollow center $w(0)=0$. The calibrated functional is:
+\begin{equation}
+\mathcal{L}_{iso}[f] = \lambda \int_{0}^{\tau_{max}} f(t) \big(w * f\big)(t) dt
+\end{equation}
+\textit{Proof of constraints:}
+1) If peaks are separated by a distance greater than $\tau_w$, the convolution evaluates to $0$ at every peak location. Hence, $\mathcal{L}_{iso}[f^*] = 0$.
+2) The variational derivative is $\frac{\delta \mathcal{L}_{iso}}{\delta f(t)} = 2\lambda (w * f)(t)$. In the expected configuration containing $N = \rho_0 \tau_{max}$ peaks of width $\tau_e$, the convolution equals $\tau_e$ inside the window of each peak. The non-zero domain covers $N \times 2\tau_w$ time. The average variational norm over $\tau_{max}$ is:
+\begin{equation}
+\langle | \frac{\delta \mathcal{L}_{iso}}{\delta f} | \rangle = \frac{1}{\tau_{max}} \left( N \cdot 2\tau_w \right) \cdot (2\lambda \tau_e) = 4 \lambda \rho_0 \tau_w \tau_e
+\end{equation}
+To enforce the unit variational restoring force (Condition 2), we uniquely determine the scaling constant $\lambda$:
+\begin{equation}
+\lambda = \frac{1}{4 \rho_0 \tau_w \tau_e}
+\end{equation}
+3) In discrete time, letting the window width be $W = \tau_w / \Delta t$ bins and peak width be $1$ bin ($\tau_e = \Delta t$), the discrete calibrated functional becomes:
+\begin{equation}
+\mathcal{L}_{iso} = \frac{\Delta t}{4 \rho_0 \tau_w} \sum_{i} f_i (w * f)_i
+\end{equation}
+This formulation preserves discretization invariance while adapting automatically to the physical parameters of the environment.
+
+\subsubsection*{3. Unified Isotropic Objective}
+Since both functionals are calibrated to project a unit gradient force around the solution, they form a perfectly isotropic error space. We combine them using the Euclidean norm:
+\begin{equation}
+\mathcal{L}_{reg} = \sqrt{\mathcal{L}_{sharp}^2 + \mathcal{L}_{iso}^2 + \epsilon}
+\end{equation}
+where $\epsilon$ is a small constant ensuring numerical stability at the origin. This regularization is added to the primary spectrogram reconstruction loss (KL-divergence).
 
 \section{Results}
 
@@ -72,10 +117,12 @@ The blind deconvolution model successfully reconstructed the sparse sequenograms
 % [TODO: Describe the results obtained from the 600,000x300 bat echolocation spectrogram. Mention how the templates were selected and how the extracted sequenograms improved signal timing accuracy compared to raw data.]
 
 \section{Discussion}
-The primary advantage of the proposed frequency-dependent 1D convolution over standard 2D deconvolution is its physical consistency. By prohibiting cross-frequency energy transfer within the echo model, we force the algorithm to explain temporal blurring strictly through reverberation. This prevents the model from maliciously altering the shape of the reference templates to minimize the loss function. Consequently, the extracted sequenograms represent true emission events rather than mathematical artifacts.
+The primary advantage of the proposed frequency-dependent 1D convolution over standard 2D deconvolution is its physical consistency. By prohibiting cross-frequency energy transfer within the echo model, we force the algorithm to explain temporal blurring strictly through reverberation. This prevents the model from maliciously altering the shape of the reference templates to minimize the loss function. 
+
+Additionally, we introduced a Gauge Calibration framework for structural loss functions. By mathematically enforcing a \textit{unit variational restoring force} across all penalty terms, we mapped the optimization process into an isotropic space. This allowed us to aggregate structural constraints using Euclidean geometry ($\sqrt{\sum \mathcal{L}_i^2}$) rather than conventional linear combinations. We argue that if practitioners adopt these three physical rules (Zero Ground State, Unit Variational Force, and Discretization Invariance) for regularizing neural networks, the field could entirely eliminate the need for heuristic hyperparameter tuning when balancing multi-task objective functions.
 
 \section{Conclusion}
-The Adaptive Sequenogram Extraction framework offers a robust, physics-informed approach to pattern discovery in highly reverberant environments. By separating the intrinsic signal template from the external environmental echo, the method provides high-fidelity temporal activations. Its reliance on FFT-based convolutions and dynamic frequency slicing makes it computationally viable for the large-scale analysis of continuous acoustic recordings.
+The Adaptive Sequenogram Extraction framework offers a robust, physics-informed approach to pattern discovery in highly reverberant environments. By separating the intrinsic signal template from the external environmental echo, the method provides high-fidelity temporal activations. Its reliance on FFT-based convolutions and theoretically calibrated, scale-invariant loss functionals makes it computationally viable and hyperparameter-free for the large-scale analysis of continuous acoustic recordings.
 
 \section*{Data and Code Availability}
 The Python source code (utilizing PyTorch) and scripts for synthetic data generation are available in our public repository: \url{https://github.com/yourusername/AdaptiveSequenograms}.
