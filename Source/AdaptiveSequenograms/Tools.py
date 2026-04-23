@@ -162,3 +162,49 @@ if __name__ == "__main__":
     # для профиля эха накапливаются во внутреннем тензоре слоя.
     print("Градиенты профиля эха получены:", echo_layer.data.grad is not None)
     print("Форма градиента эха:", echo_layer.data.grad.shape)
+
+
+# =====================================================================
+# 4. Поиск Шаблона (Кросс-Корреляция): 2D Спектрограмма * 2D Паттерн
+# Переписано в стиле AnchoredConv (через отзеркаливание ядра)
+# =====================================================================
+class AnchoredMatch2D(nn.Module):
+    def __init__(self, data: Float[Tensor, "... F W"], zero_f: int, zero_t: int):
+        super().__init__()
+        assert data.dim() >= 2, "Паттерн должен иметь минимум 2 оси (F, W)"
+        assert 0 <= zero_f < data.size(-2), "zero_f выходит за границы"
+        assert 0 <= zero_t < data.size(-1), "zero_t выходит за границы"
+        
+        # МАГИЯ ЗДЕСЬ: Для кросс-корреляции через алгоритм свёртки, 
+        # паттерн нужно физически отзеркалить по обеим осям.
+        flipped_data = torch.flip(data, dims=(-2, -1))
+        
+        if isinstance(data, nn.Parameter):
+            # Если вы решите обучать сам шаблон поиска
+            self.data = nn.Parameter(flipped_data)
+        else:
+            self.register_buffer('data', flipped_data)
+            
+        # Раз паттерн отзеркален, координаты якоря тоже нужно отзеркалить!
+        F_ker, W_ker = data.shape[-2], data.shape[-1]
+        self.Z_f = F_ker - 1 - zero_f
+        self.Z_t = W_ker - 1 - zero_t
+
+    def forward(self, signal: Float[Tensor, "... F T"]) -> Float[Tensor, "... F T"]:
+        assert signal.dim() >= 2, "Сигнал должен иметь минимум (F, T)"
+        
+        F_sig, T_sig = signal.shape[-2], signal.shape[-1]
+        F_ker, W_ker = self.data.shape[-2], self.data.shape[-1]
+        
+        N_f = F_sig + F_ker - 1
+        N_t = T_sig + W_ker - 1
+        
+        # Стандартное БПФ
+        Sig_f = torch.fft.rfft2(signal, s=(N_f, N_t), dim=(-2, -1))
+        Ker_f = torch.fft.rfft2(self.data, s=(N_f, N_t), dim=(-2, -1))
+        
+        # ОБЫЧНОЕ умножение (без conj!), так как ядро уже отзеркалено
+        out = torch.fft.irfft2(Sig_f * Ker_f, s=(N_f, N_t), dim=(-2, -1))
+        
+        # ВАШ ИДЕАЛЬНЫЙ СРЕЗ (используем новые отзеркаленные якоря Z_f и Z_t)
+        return out[..., self.Z_f : self.Z_f + F_sig, self.Z_t : self.Z_t + T_sig]
